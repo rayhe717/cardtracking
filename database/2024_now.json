@@ -1,0 +1,36 @@
+{
+  "set": "2024 Topps Now",
+  "cards": [
+    { "card_number": "1", "driver": "Max Verstappen", "team": "Red Bull" },
+    { "card_number": "2", "driver": "Lewis Hamilton", "team": "Mercedes" },
+    { "card_number": "3", "driver": "Charles Leclerc", "team": "Ferrari" },
+    { "card_number": "4", "driver": "Lando Norris", "team": "McLaren" },
+    { "card_number": "5", "driver": "Isack Hadjar", "team": "RB" },
+    { "card_number": "6", "driver": "George Russell", "team": "Mercedes" },
+    { "card_number": "7", "driver": "Andrea Kimi Antonelli", "team": "Mercedes" },
+    { "card_number": "8", "driver": "Oscar Piastri", "team": "McLaren" },
+    { "card_number": "9", "driver": "Esteban Ocon", "team": "Haas" },
+    { "card_number": "10", "driver": "Oliver Bearman", "team": "Haas" },
+    { "card_number": "11", "driver": "Pierre Gasly", "team": "Alpine" },
+    { "card_number": "12", "driver": "Liam Lawson", "team": "RB" },
+    { "card_number": "13", "driver": "Arvid Lindblad", "team": "Red Bull Junior" },
+    { "card_number": "14", "driver": "Carlos Sainz Jr", "team": "Williams" },
+    { "card_number": "15", "driver": "Alex Albon", "team": "Williams" },
+    { "card_number": "16", "driver": "Rafael Camara", "team": "Ferrari Driver Academy" },
+    { "card_number": "17", "driver": "Daniel Ricciardo", "team": "Free Agent" },
+    { "card_number": "18", "driver": "Luke Browning", "team": "Williams Academy" },
+    { "card_number": "19", "driver": "Gabriel Bortoleto", "team": "Sauber" },
+    { "card_number": "20", "driver": "Nico Hulkenberg", "team": "Sauber" },
+    { "card_number": "21", "driver": "Pepe Marti", "team": "Red Bull Junior" },
+    { "card_number": "22", "driver": "Dino Beganovic", "team": "Ferrari Driver Academy" }
+  ],
+  "parallels": [
+    "Base",
+    "Parallel /99",
+    "Parallel /49",
+    "Parallel /25",
+    "Parallel /10",
+    "Parallel /5",
+    "1/1"
+  ]
+}

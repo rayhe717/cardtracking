@@ -1,0 +1,26 @@
+{
+  "name": "f1-card-tracker-backend",
+  "version": "0.1.0",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.3.0",
+    "cors": "^2.8.5",
+    "csv-parse": "^5.6.0",
+    "dotenv": "^16.5.0",
+    "express": "^4.19.2",
+    "fuse.js": "^7.0.0",
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.56.0",
+    "sharp": "^0.33.5",
+    "tesseract.js": "^5.1.1",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

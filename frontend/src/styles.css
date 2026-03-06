@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans,
+    sans-serif;
+}
+
+/* Palette: #FAF3E1 cream, #F5E7C6 creamAlt, #FA8112 accent, #222222 dark */
+input, select, textarea {
+  color: #222222;
+}
+
+input::placeholder, textarea::placeholder {
+  color: rgba(34, 34, 34, 0.5);
+}
+
+/* Cropper viewport - light background */
+.cropper-view-box {
+  outline-color: rgba(34, 34, 34, 0.3);
+}
+
+.cropper-line, .cropper-point {
+  background-color: #FA8112;
+}

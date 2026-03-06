@@ -1,0 +1,18 @@
+Chinese,English,Type,Notes
+大奖赛,Grand Prix Winners,attribute,subset
+大奖赛获胜,Grand Prix Winners,attribute,subset
+大奖赛冠军,Grand Prix Winners,attribute,subset
+杆位,Pole Position,attribute,subset
+最佳车手,Grand Prix Driver of The Day,attribute,subset
+双人,Duo Cards,attribute,subset
+勇往直前,On The Move,attribute,subset
+扑克牌,Ace of Trades,attribute,subset
+扑克骰子,Ace of Trades,attribute,subset
+速度恶魔,Speed Demons,attribute,subset
+头盔,Helmet Collection,attribute,subset
+签,Autographs,attribute,signed card
+签字,Autographs,attribute,signed card
+贴签,Autographs,attribute,signed card
+编,Serial Number,attribute,"usually ""/n"""
+新秀,Rookie,attribute,rookie card
+新秀RC,Rookie,attribute,rookie card
