@@ -8,6 +8,7 @@ const { runOCR } = require("../services/ocrService");
 const { extractCardData } = require("../services/extractionService");
 const { loadChecklist, matchCard } = require("../services/matchService");
 const { savePriceEntry } = require("../services/notionService");
+const { getSelectOptions } = require("../services/normalizationService");
 
 const uploadDir = path.resolve(__dirname, "../../../uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -87,6 +88,10 @@ router.get("/checklist", (_req, res) => {
     checklistCache = loadChecklist();
   }
   res.json({ ok: true, checklist: checklistCache });
+});
+
+router.get("/options", (_req, res) => {
+  res.json({ ok: true, options: getSelectOptions() });
 });
 
 router.post("/upload", upload.single("image"), (req, res) => {

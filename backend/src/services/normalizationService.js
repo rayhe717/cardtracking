@@ -46,7 +46,18 @@ function getCardTypes() {
   return [...new Set(cardTerms.map((row) => row.English).filter(Boolean))];
 }
 
+function getSelectOptions() {
+  return {
+    sets: [...new Set(sets.map((row) => row.English).filter(Boolean))],
+    drivers: [...new Set(drivers.map((row) => row.English).filter(Boolean))],
+    parallels: [...new Set(parallels.map((row) => row.English).filter(Boolean))],
+    cardTypes: getCardTypes(),
+    currencies: ["USD", "CNY", "HKD", "EUR", "GBP", "SGD"],
+  };
+}
+
 module.exports = {
   normalizeOCRText,
   getCardTypes,
+  getSelectOptions,
 };

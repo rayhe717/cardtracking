@@ -87,6 +87,16 @@ export default function App() {
   const [cropMode, setCropMode] = useState("portrait");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [options, setOptions] = useState({
+    sets: [],
+    drivers: [],
+    parallels: [],
+    cardTypes: [],
+    currencies: ["USD", "CNY", "HKD", "EUR", "GBP", "SGD"],
+  });
+  const [folderImages, setFolderImages] = useState([]);
+  const [folderName, setFolderName] = useState("");
+  const [showFolderBrowser, setShowFolderBrowser] = useState(false);
   const cropperRef = useRef(null);
 
   const canProcess = useMemo(() => Boolean(croppedImage?.fileName), [croppedImage]);
@@ -94,6 +104,74 @@ export default function App() {
   const isBuy = String(form.record_type || "Market") === "Buy";
   const cropTarget = cropMode === "portrait" ? { width: 400, height: 600 } : { width: 600, height: 400 };
   const cropAspect = cropTarget.width / cropTarget.height;
+
+  useEffect(() => {
+    api("/options")
+      .then((data) => {
+        if (data.options) {
+          setOptions(data.options);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  async function onSelectFolder() {
+    try {
+      const dirHandle = await window.showDirectoryPicker();
+      const images = [];
+      const allowedExts = [".jpg", ".jpeg", ".png", ".webp"];
+      for await (const entry of dirHandle.values()) {
+        if (entry.kind === "file") {
+          const name = entry.name.toLowerCase();
+          if (allowedExts.some((ext) => name.endsWith(ext))) {
+            const file = await entry.getFile();
+            const url = URL.createObjectURL(file);
+            images.push({ name: entry.name, file, url });
+          }
+        }
+      }
+      images.sort((a, b) => a.name.localeCompare(b.name));
+      setFolderImages(images);
+      setFolderName(dirHandle.name);
+      setShowFolderBrowser(true);
+      setMessage(`Found ${images.length} images in "${dirHandle.name}"`);
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        setMessage(error.message);
+      }
+    }
+  }
+
+  async function onSelectFolderImage(img) {
+    setShowFolderBrowser(false);
+    setLoading(true);
+    setMessage("");
+    try {
+      const fd = new FormData();
+      fd.append("image", img.file, img.name);
+      const res = await fetch(`${API_BASE}/upload`, {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Upload failed");
+      }
+      setOriginalImage(data.image);
+      setCroppedImage(null);
+      setOcrText("");
+      setForm(createBlankForm());
+      setMatch(null);
+      setMessage(`"${img.name}" uploaded. Running OCR + extract...`);
+      const text = await runOCRForFile(data.image.fileName);
+      await runExtractionForText(text);
+      setMessage("Auto OCR + extract complete. Adjust crop if needed.");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     const cropper = cropperRef.current?.cropper;
@@ -277,15 +355,67 @@ export default function App() {
         <p className="text-sm text-dark/80">Screenshot → Crop → OCR → Extract → Match → Review/Edit → Save</p>
 
         <div className="rounded border border-dark/30 bg-creamAlt p-4">
-          <label className="text-sm">Upload screenshot (JPG/PNG/WEBP)</label>
-          <input
-            className="mt-2 block w-full rounded border border-dark/30 bg-cream p-2"
-            type="file"
-            accept=".jpg,.jpeg,.png,.webp"
-            onChange={onUploadChange}
-            disabled={loading}
-          />
+          <label className="mb-2 block text-sm">Upload screenshot (JPG/PNG/WEBP)</label>
+          <div className="flex flex-wrap items-center gap-3">
+            <label
+              className={`inline-flex h-[40px] cursor-pointer items-center justify-center rounded border border-dark/30 bg-accent px-4 text-sm font-medium text-white hover:opacity-90 ${loading ? "pointer-events-none opacity-50" : ""}`}
+            >
+              Select File
+              <input
+                className="hidden"
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp"
+                onChange={onUploadChange}
+                disabled={loading}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={onSelectFolder}
+              disabled={loading}
+              className="inline-flex h-[40px] items-center justify-center rounded border border-dark/30 bg-accent px-4 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+            >
+              Browse Folder
+            </button>
+          </div>
         </div>
+
+        {showFolderBrowser && folderImages.length > 0 && (
+          <div className="rounded border border-dark/30 bg-creamAlt p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-semibold">
+                {folderName} ({folderImages.length} images)
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowFolderBrowser(false)}
+                className="rounded border border-dark/30 bg-cream px-2 py-1 text-xs hover:bg-creamAlt"
+              >
+                Close
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+              {folderImages.map((img) => (
+                <button
+                  key={img.name}
+                  type="button"
+                  onClick={() => onSelectFolderImage(img)}
+                  disabled={loading}
+                  className="group relative overflow-hidden rounded border border-dark/30 bg-cream hover:border-accent disabled:opacity-50"
+                >
+                  <img
+                    src={img.url}
+                    alt={img.name}
+                    className="aspect-[2/3] w-full object-cover"
+                  />
+                  <span className="absolute inset-x-0 bottom-0 truncate bg-dark/70 px-1 py-0.5 text-[10px] text-white">
+                    {img.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {originalImage && (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -473,6 +603,70 @@ export default function App() {
                       <option>Katao</option>
                       <option>Carousell</option>
                       <option>Others</option>
+                    </select>
+                  ) : key === "set_name" ? (
+                    <select
+                      value={form[key] ?? ""}
+                      onChange={(e) => onChangeField(key, e.target.value)}
+                      className="rounded border border-dark/30 bg-cream p-2"
+                    >
+                      <option value="">-- Select Set --</option>
+                      {options.sets.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  ) : key === "driver" ? (
+                    <select
+                      value={form[key] ?? ""}
+                      onChange={(e) => onChangeField(key, e.target.value)}
+                      className="rounded border border-dark/30 bg-cream p-2"
+                    >
+                      <option value="">-- Select Driver --</option>
+                      {options.drivers.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  ) : key === "card_type" ? (
+                    <select
+                      value={form[key] ?? ""}
+                      onChange={(e) => onChangeField(key, e.target.value)}
+                      className="rounded border border-dark/30 bg-cream p-2"
+                    >
+                      <option value="">-- Select Card Type --</option>
+                      {options.cardTypes.map((ct) => (
+                        <option key={ct} value={ct}>
+                          {ct}
+                        </option>
+                      ))}
+                    </select>
+                  ) : key === "parallel" ? (
+                    <select
+                      value={form[key] ?? ""}
+                      onChange={(e) => onChangeField(key, e.target.value)}
+                      className="rounded border border-dark/30 bg-cream p-2"
+                    >
+                      <option value="">-- Select Parallel --</option>
+                      {options.parallels.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  ) : key === "currency" ? (
+                    <select
+                      value={form[key] ?? "USD"}
+                      onChange={(e) => onChangeField(key, e.target.value)}
+                      className="rounded border border-dark/30 bg-cream p-2"
+                    >
+                      {options.currencies.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
                     </select>
                   ) : (
                     <input
