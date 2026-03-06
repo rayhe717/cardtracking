@@ -36,6 +36,20 @@ function selectValue(name) {
   return name ? { select: { name } } : undefined;
 }
 
+function multiSelectValue(value) {
+  if (!value) return undefined;
+  let items;
+  if (Array.isArray(value)) {
+    items = value.filter(Boolean);
+  } else if (typeof value === "string") {
+    items = value.split(/\s*\/\s*/).filter(Boolean);
+  } else {
+    return undefined;
+  }
+  if (items.length === 0) return undefined;
+  return { multi_select: items.map((name) => ({ name })) };
+}
+
 function normalizePlatform(value) {
   const raw = String(value || "").trim().toLowerCase();
   if (!raw) {
@@ -81,7 +95,7 @@ async function createCard(entry, cardTitle) {
       "Card ID": { title: [{ text: { content: cardTitle } }] },
       Set: selectValue(entry.set_name),
       "Card Type": selectValue(entry.card_type),
-      Driver: selectValue(entry.driver),
+      Driver: multiSelectValue(entry.driver),
       Parallel: selectValue(entry.parallel),
       "Serial Print Run": { rich_text: [{ text: { content: entry.serial_number || "" } }] },
     }),

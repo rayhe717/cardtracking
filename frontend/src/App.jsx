@@ -35,7 +35,7 @@ function createBlankForm() {
     listing_date: todayDate(),
     set_name: "",
     card_type: "",
-    driver: "",
+    driver: [],
     card_number: "",
     parallel: "",
     serial_number: "",
@@ -143,7 +143,6 @@ export default function App() {
   }
 
   async function onSelectFolderImage(img) {
-    setShowFolderBrowser(false);
     setLoading(true);
     setMessage("");
     try {
@@ -228,9 +227,12 @@ export default function App() {
     }
     const res = await api("/extract", "POST", { ocrText: text });
     const extracted = res.extracted || {};
+    const extractedDriver = extracted.driver || "";
+    const driverArray = extractedDriver ? [extractedDriver] : [];
     setForm((prev) => ({
       ...prev,
       ...extracted,
+      driver: driverArray,
       platform: normalizePlatform(extracted.platform || prev.platform),
       price: extracted.price ?? "",
       listing_date: extracted.listing_date || prev.listing_date || todayDate(),
@@ -328,6 +330,7 @@ export default function App() {
       await api("/save", "POST", {
         entry: {
           ...form,
+          driver: Array.isArray(form.driver) ? form.driver : [form.driver].filter(Boolean),
           platform: normalizePlatform(form.platform),
           price: form.price ? Number(form.price) : 0,
           quantity: form.quantity ? Number(form.quantity) : 1,
@@ -376,6 +379,22 @@ export default function App() {
               className="inline-flex h-[40px] items-center justify-center rounded border border-dark/30 bg-accent px-4 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
             >
               Browse Folder
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOriginalImage(null);
+                setCroppedImage(null);
+                setOcrText("");
+                setForm(createBlankForm());
+                setMatch(null);
+                setMessage("");
+                setShowFolderBrowser(false);
+              }}
+              disabled={loading}
+              className="inline-flex h-[40px] items-center justify-center rounded border border-dark/30 bg-creamAlt px-4 text-sm font-medium text-dark hover:bg-cream disabled:opacity-50"
+            >
+              Refresh
             </button>
           </div>
         </div>
@@ -618,18 +637,57 @@ export default function App() {
                       ))}
                     </select>
                   ) : key === "driver" ? (
-                    <select
-                      value={form[key] ?? ""}
-                      onChange={(e) => onChangeField(key, e.target.value)}
-                      className="rounded border border-dark/30 bg-cream p-2"
-                    >
-                      <option value="">-- Select Driver --</option>
-                      {options.drivers.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        {(Array.isArray(form[key]) ? form[key] : []).map((d, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center gap-1 rounded bg-accent px-2 py-1 text-xs text-white"
+                          >
+                            {d}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newDrivers = form[key].filter((_, i) => i !== idx);
+                                onChangeField(key, newDrivers);
+                              }}
+                              className="ml-1 hover:text-cream"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const selected = e.target.value;
+                          if (!selected) return;
+                          const current = Array.isArray(form[key]) ? form[key] : [];
+                          if (current.length >= 2) {
+                            return;
+                          }
+                          if (!current.includes(selected)) {
+                            onChangeField(key, [...current, selected]);
+                          }
+                        }}
+                        disabled={(Array.isArray(form[key]) ? form[key] : []).length >= 2}
+                        className="rounded border border-dark/30 bg-cream p-2 disabled:opacity-50"
+                      >
+                        <option value="">
+                          {(Array.isArray(form[key]) ? form[key] : []).length >= 2
+                            ? "Max 2 drivers selected"
+                            : "-- Add Driver --"}
                         </option>
-                      ))}
-                    </select>
+                        {options.drivers
+                          .filter((d) => !(Array.isArray(form[key]) ? form[key] : []).includes(d))
+                          .map((d) => (
+                            <option key={d} value={d}>
+                              {d}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
                   ) : key === "card_type" ? (
                     <select
                       value={form[key] ?? ""}
