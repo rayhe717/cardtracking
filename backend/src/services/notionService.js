@@ -18,16 +18,43 @@ function requirePortfolioEnv() {
 }
 
 function buildCardTitle(entry) {
-  return [entry.set_name, entry.driver, entry.parallel, entry.serial_number].filter(Boolean).join(" ");
+  return [entry.set_name, entry.driver, entry.card_type].filter(Boolean).join(" ");
 }
 
-async function findCardByTitle(cardTitle) {
+async function findCardByProperties(entry) {
+  const filters = [];
+
+  if (entry.set_name) {
+    filters.push({
+      property: "Set",
+      select: { equals: entry.set_name },
+    });
+  }
+
+  if (entry.card_type) {
+    filters.push({
+      property: "Card Type",
+      select: { equals: entry.card_type },
+    });
+  }
+
+  if (entry.driver) {
+    const drivers = Array.isArray(entry.driver) ? entry.driver : [entry.driver];
+    for (const driver of drivers.filter(Boolean)) {
+      filters.push({
+        property: "Driver",
+        multi_select: { contains: driver },
+      });
+    }
+  }
+
+  if (filters.length === 0) {
+    return null;
+  }
+
   const res = await notion.databases.query({
     database_id: process.env.NOTION_CARD_REGISTRY_DB_ID,
-    filter: {
-      property: "Card ID",
-      title: { equals: cardTitle },
-    },
+    filter: filters.length === 1 ? filters[0] : { and: filters },
   });
   return res.results[0] || null;
 }
@@ -96,8 +123,6 @@ async function createCard(entry, cardTitle) {
       Set: selectValue(entry.set_name),
       "Card Type": selectValue(entry.card_type),
       Driver: multiSelectValue(entry.driver),
-      Parallel: selectValue(entry.parallel),
-      "Serial Print Run": { rich_text: [{ text: { content: entry.serial_number || "" } }] },
     }),
   });
 }
@@ -118,6 +143,8 @@ async function createPriceHistory(entry, cardPageId) {
       Price: { number: numberValue(entry.price) },
       Currency: selectValue(entry.currency || "USD"),
       Platform: selectValue(normalizePlatform(entry.platform)),
+      Parallel: selectValue(entry.parallel),
+      "Serial Number": { rich_text: [{ text: { content: entry.serial_number || "" } }] },
       "Record Type": selectValue(entry.record_type || "Market"),
       Notes: { rich_text: [{ text: { content: entry.notes || "" } }] },
       Screenshot: files.length ? { files } : undefined,
@@ -136,20 +163,10 @@ async function createPortfolioLot(entry, cardPageId) {
       "Buy Price": { number: numberValue(entry.price) },
       Quantity: { number: numberValue(entry.quantity) || 1 },
       Fees: { number: numberValue(entry.fees) || 0 },
+      Parallel: selectValue(entry.parallel),
+      "Serial Number": { rich_text: [{ text: { content: entry.serial_number || "" } }] },
       Status: selectValue(entry.status || "Holding"),
       Notes: { rich_text: [{ text: { content: entry.notes || "" } }] },
-    }),
-  });
-}
-
-async function updateCardMarketSnapshot(cardPageId, entry) {
-  const entryDate = entry.date || new Date().toISOString().slice(0, 10);
-  await notion.pages.update({
-    page_id: cardPageId,
-    properties: compactProperties({
-      "Card Type": selectValue(entry.card_type),
-      "Current Market Price": { number: numberValue(entry.price) },
-      "Last Market Date": { date: { start: entryDate } },
     }),
   });
 }
@@ -158,7 +175,7 @@ async function savePriceEntry(entry) {
   requireNotionEnv();
   const recordType = (entry.record_type || "Market").toLowerCase();
   const cardTitle = buildCardTitle(entry);
-  let cardPage = await findCardByTitle(cardTitle);
+  let cardPage = await findCardByProperties(entry);
   if (!cardPage) {
     cardPage = await createCard(entry, cardTitle);
   }
@@ -169,9 +186,6 @@ async function savePriceEntry(entry) {
     requirePortfolioEnv();
     lotPage = await createPortfolioLot(entry, cardPage.id);
   }
-
-  // Always sync card-level snapshot with latest saved browser price.
-  await updateCardMarketSnapshot(cardPage.id, entry);
 
   return {
     cardPageId: cardPage.id,
