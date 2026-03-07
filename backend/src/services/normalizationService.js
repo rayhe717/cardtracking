@@ -47,11 +47,12 @@ function getCardTypes() {
 }
 
 function getSelectOptions() {
+  const sortAlpha = (arr) => [...arr].sort((a, b) => a.localeCompare(b));
   return {
-    sets: [...new Set(sets.map((row) => row.English).filter(Boolean))],
-    drivers: [...new Set(drivers.map((row) => row.English).filter(Boolean))],
-    parallels: [...new Set(parallels.map((row) => row.English).filter(Boolean))],
-    cardTypes: getCardTypes(),
+    sets: sortAlpha([...new Set(sets.map((row) => row.English).filter(Boolean))]),
+    drivers: sortAlpha([...new Set(drivers.map((row) => row.English).filter(Boolean))]),
+    parallels: sortAlpha([...new Set(parallels.map((row) => row.English).filter(Boolean))]),
+    cardTypes: sortAlpha(getCardTypes()),
     currencies: ["USD", "CNY", "HKD", "EUR", "GBP", "SGD"],
   };
 }
