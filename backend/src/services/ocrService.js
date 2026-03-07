@@ -2,7 +2,7 @@ const Tesseract = require("tesseract.js");
 const path = require("path");
 
 const TESSDATA_DIR = path.resolve(__dirname, "../../tessdata");
-const PRIMARY_LANG = process.env.OCR_LANG_PRIMARY || "eng+chi_sim+chi_tra";
+const PRIMARY_LANG = process.env.OCR_LANG_PRIMARY || "eng+chi_sim";
 const FALLBACK_LANG = process.env.OCR_LANG_FALLBACK || "eng";
 
 const workerOptions = {

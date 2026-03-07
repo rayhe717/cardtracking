@@ -30,7 +30,7 @@ function todayDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
-const FALLBACK_CNY_RATES = {
+const DEFAULT_CNY_RATES = {
   CNY: 1,
   USD: 7.2,
   EUR: 7.8,
@@ -39,32 +39,31 @@ const FALLBACK_CNY_RATES = {
   SGD: 5.3,
 };
 
-async function fetchExchangeRates() {
+const RATES_STORAGE_KEY = "f1card_exchange_rates";
+
+function loadSavedRates() {
   try {
-    const res = await fetch("https://api.frankfurter.app/latest?to=CNY&from=USD,EUR,GBP,HKD,SGD");
-    const data = await res.json();
-    if (data.rates?.CNY) {
-      const usdToCny = data.rates.CNY;
-      const rates = { CNY: 1 };
-      const baseRes = await fetch("https://api.frankfurter.app/latest?from=USD");
-      const baseData = await baseRes.json();
-      if (baseData.rates) {
-        rates.USD = usdToCny;
-        rates.EUR = usdToCny / (baseData.rates.EUR || 0.92);
-        rates.GBP = usdToCny / (baseData.rates.GBP || 0.79);
-        rates.HKD = usdToCny / (baseData.rates.HKD || 7.8);
-        rates.SGD = usdToCny / (baseData.rates.SGD || 1.35);
-      }
-      return rates;
+    const saved = localStorage.getItem(RATES_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return { ...DEFAULT_CNY_RATES, ...parsed };
     }
   } catch (e) {
-    console.warn("Failed to fetch exchange rates, using fallback:", e);
+    console.warn("Failed to load saved rates:", e);
   }
-  return FALLBACK_CNY_RATES;
+  return DEFAULT_CNY_RATES;
+}
+
+function saveRatesToStorage(rates) {
+  try {
+    localStorage.setItem(RATES_STORAGE_KEY, JSON.stringify(rates));
+  } catch (e) {
+    console.warn("Failed to save rates:", e);
+  }
 }
 
 function convertToCNY(amount, currency, rates) {
-  const rate = rates[currency] || FALLBACK_CNY_RATES[currency] || 1;
+  const rate = rates[currency] || DEFAULT_CNY_RATES[currency] || 1;
   return Math.round(amount * rate * 100) / 100;
 }
 
@@ -118,6 +117,12 @@ async function api(path, method = "GET", body) {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("extract");
+  const [exchangeRates, setExchangeRates] = useState(loadSavedRates);
+
+  function updateRates(newRates) {
+    setExchangeRates(newRates);
+    saveRatesToStorage(newRates);
+  }
 
   if (activeTab === "trends") {
     return (
@@ -128,10 +133,19 @@ export default function App() {
     );
   }
 
+  if (activeTab === "settings") {
+    return (
+      <div>
+        <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
+        <SettingsView exchangeRates={exchangeRates} updateRates={updateRates} />
+      </div>
+    );
+  }
+
   return (
     <div>
       <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
-      <ExtractView />
+      <ExtractView exchangeRates={exchangeRates} />
     </div>
   );
 }
@@ -162,12 +176,23 @@ function TabNav({ activeTab, setActiveTab }) {
         >
           Trends
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("settings")}
+          className={`px-6 py-3 text-sm font-medium transition-colors ${
+            activeTab === "settings"
+              ? "border-b-2 border-accent bg-cream text-accent"
+              : "text-dark/70 hover:bg-cream hover:text-dark"
+          }`}
+        >
+          Settings
+        </button>
       </div>
     </div>
   );
 }
 
-function ExtractView() {
+function ExtractView({ exchangeRates }) {
   const [originalImage, setOriginalImage] = useState(null);
   const [croppedImage, setCroppedImage] = useState(null);
   const [ocrText, setOcrText] = useState("");
@@ -187,8 +212,6 @@ function ExtractView() {
   const [folderImages, setFolderImages] = useState([]);
   const [folderName, setFolderName] = useState("");
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
-  const [exchangeRates, setExchangeRates] = useState(FALLBACK_CNY_RATES);
-  const [ratesLoaded, setRatesLoaded] = useState(false);
   const cropperRef = useRef(null);
 
   const canProcess = useMemo(() => Boolean(croppedImage?.fileName), [croppedImage]);
@@ -212,11 +235,6 @@ function ExtractView() {
         }
       })
       .catch(() => {});
-
-    fetchExchangeRates().then((rates) => {
-      setExchangeRates(rates);
-      setRatesLoaded(true);
-    });
   }, []);
 
   async function onSelectFolder() {
@@ -855,7 +873,7 @@ function ExtractView() {
               </p>
               <p className="mt-1 text-xs text-dark/60">
                 Rate: 1 {form.currency || "USD"} = {(exchangeRates[form.currency || "USD"] || 1).toFixed(4)} CNY
-                {ratesLoaded ? " (live)" : " (fallback)"}
+                <span className="ml-1">(from Settings)</span>
               </p>
             </div>
             {match?.suggested && (
@@ -903,6 +921,97 @@ function ExtractView() {
         </div>
 
         {message && <p className="text-sm text-dark/90">{message}</p>}
+      </div>
+    </div>
+  );
+}
+
+function SettingsView({ exchangeRates, updateRates }) {
+  const [rates, setRates] = useState(exchangeRates);
+  const [saved, setSaved] = useState(false);
+
+  const currencies = ["USD", "EUR", "GBP", "HKD", "SGD"];
+
+  function onRateChange(currency, value) {
+    const numValue = parseFloat(value) || 0;
+    setRates((prev) => ({ ...prev, [currency]: numValue }));
+    setSaved(false);
+  }
+
+  function onSave() {
+    updateRates(rates);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  function onReset() {
+    setRates(DEFAULT_CNY_RATES);
+    setSaved(false);
+  }
+
+  return (
+    <div className="min-h-screen bg-cream p-6 text-dark">
+      <div className="mx-auto max-w-2xl space-y-6">
+        <h1 className="text-2xl font-bold">Settings</h1>
+
+        <div className="rounded border border-dark/30 bg-creamAlt p-6">
+          <h2 className="mb-4 text-lg font-semibold">Exchange Rates (to CNY)</h2>
+          <p className="mb-4 text-sm text-dark/70">
+            Enter the exchange rate for each currency to CNY. These rates will be saved and used for price conversions.
+          </p>
+
+          <div className="space-y-3">
+            {currencies.map((currency) => (
+              <label key={currency} className="flex items-center gap-4">
+                <span className="w-16 font-medium">{currency}</span>
+                <span className="text-dark/60">1 {currency} =</span>
+                <input
+                  type="number"
+                  step="0.0001"
+                  min="0"
+                  value={rates[currency] || ""}
+                  onChange={(e) => onRateChange(currency, e.target.value)}
+                  className="w-32 rounded border border-dark/30 bg-cream p-2 text-right"
+                />
+                <span className="text-dark/60">CNY</span>
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-6 flex gap-3">
+            <button
+              type="button"
+              onClick={onSave}
+              className="rounded border border-dark/30 bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+            >
+              Save Rates
+            </button>
+            <button
+              type="button"
+              onClick={onReset}
+              className="rounded border border-dark/30 bg-creamAlt px-4 py-2 text-sm font-medium hover:bg-cream"
+            >
+              Reset to Default
+            </button>
+          </div>
+
+          {saved && <p className="mt-3 text-sm text-green-600">Rates saved successfully!</p>}
+        </div>
+
+        <div className="rounded border border-dark/30 bg-creamAlt p-6">
+          <h2 className="mb-3 text-lg font-semibold">Current Rates Summary</h2>
+          <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
+            {currencies.map((currency) => (
+              <div key={currency} className="rounded bg-cream p-2">
+                <span className="font-medium">{currency}:</span>{" "}
+                <span className="text-accent">{(rates[currency] || 0).toFixed(4)}</span>
+              </div>
+            ))}
+            <div className="rounded bg-cream p-2">
+              <span className="font-medium">CNY:</span> <span className="text-accent">1.0000</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

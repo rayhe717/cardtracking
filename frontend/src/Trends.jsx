@@ -40,6 +40,7 @@ const GROUP_BY_OPTIONS = [
   { id: "driver", label: "Driver" },
   { id: "set", label: "Set" },
   { id: "cardType", label: "Card Type" },
+  { id: "platform", label: "Platform" },
 ];
 
 export default function Trends() {
@@ -54,13 +55,15 @@ export default function Trends() {
     drivers: [],
     cardTypes: [],
     parallels: [],
+    platforms: [],
   });
   const [selectedSet, setSelectedSet] = useState("");
   const [selectedDriver, setSelectedDriver] = useState("");
   const [selectedCardType, setSelectedCardType] = useState("");
   const [selectedParallel, setSelectedParallel] = useState("");
+  const [selectedPlatform, setSelectedPlatform] = useState("");
 
-  const hasAnyFilter = selectedSet || selectedDriver || selectedCardType || selectedParallel;
+  const hasAnyFilter = selectedSet || selectedDriver || selectedCardType || selectedParallel || selectedPlatform;
 
   useEffect(() => {
     setLoading(true);
@@ -68,7 +71,7 @@ export default function Trends() {
       .then((res) => res.json())
       .then((data) => {
         if (data.ok) {
-          setFilterOptions(data.options || { sets: [], drivers: [], cardTypes: [], parallels: [] });
+          setFilterOptions(data.options || { sets: [], drivers: [], cardTypes: [], parallels: [], platforms: [] });
         } else {
           setError(data.error || "Failed to load filter options");
         }
@@ -89,6 +92,7 @@ export default function Trends() {
     if (selectedDriver) params.set("driver", selectedDriver);
     if (selectedCardType) params.set("cardType", selectedCardType);
     if (selectedParallel) params.set("parallel", selectedParallel);
+    if (selectedPlatform) params.set("platform", selectedPlatform);
 
     fetch(`${API_BASE}/price-history-filtered?${params.toString()}`)
       .then((res) => res.json())
@@ -101,7 +105,7 @@ export default function Trends() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [selectedSet, selectedDriver, selectedCardType, selectedParallel, hasAnyFilter]);
+  }, [selectedSet, selectedDriver, selectedCardType, selectedParallel, selectedPlatform, hasAnyFilter]);
 
   const chartData = useMemo(() => {
     if (!priceHistory.length) return null;
@@ -228,6 +232,7 @@ export default function Trends() {
     setSelectedDriver("");
     setSelectedCardType("");
     setSelectedParallel("");
+    setSelectedPlatform("");
     setPriceHistory([]);
   }
 
@@ -236,6 +241,7 @@ export default function Trends() {
     selectedDriver && `Driver: ${selectedDriver}`,
     selectedCardType && `Card Type: ${selectedCardType}`,
     selectedParallel && `Parallel: ${selectedParallel}`,
+    selectedPlatform && `Platform: ${selectedPlatform}`,
   ].filter(Boolean);
 
   const disabledGroupBy = {
@@ -243,6 +249,7 @@ export default function Trends() {
     driver: Boolean(selectedDriver),
     cardType: Boolean(selectedCardType),
     parallel: Boolean(selectedParallel),
+    platform: Boolean(selectedPlatform),
   };
 
   const availableGroupByOptions = GROUP_BY_OPTIONS.filter((g) => !disabledGroupBy[g.id]);
@@ -251,7 +258,7 @@ export default function Trends() {
     if (disabledGroupBy[groupBy] && availableGroupByOptions.length > 0) {
       setGroupBy(availableGroupByOptions[0].id);
     }
-  }, [selectedSet, selectedDriver, selectedCardType, selectedParallel]);
+  }, [selectedSet, selectedDriver, selectedCardType, selectedParallel, selectedPlatform]);
 
   return (
     <div className="min-h-screen bg-cream p-6 text-dark">
@@ -262,7 +269,7 @@ export default function Trends() {
         <div className="rounded border border-dark/30 bg-creamAlt p-4">
           <div className="mb-4">
             <label className="mb-2 block text-sm font-medium">Filters</label>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <div>
                 <label className="block text-xs text-dark/70">Set</label>
                 <select
@@ -321,6 +328,22 @@ export default function Trends() {
                 >
                   <option value="">-- Any --</option>
                   {filterOptions.parallels.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-dark/70">Platform</label>
+                <select
+                  value={selectedPlatform}
+                  onChange={(e) => setSelectedPlatform(e.target.value)}
+                  disabled={loading}
+                  className="mt-1 w-full rounded border border-dark/30 bg-cream p-2 text-sm"
+                >
+                  <option value="">-- Any --</option>
+                  {filterOptions.platforms.map((p) => (
                     <option key={p} value={p}>
                       {p}
                     </option>

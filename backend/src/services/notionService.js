@@ -263,7 +263,7 @@ async function getPriceHistory(cardId) {
   return results;
 }
 
-async function getPriceHistoryFiltered({ set, driver, cardType, parallel }) {
+async function getPriceHistoryFiltered({ set, driver, cardType, parallel, platform }) {
   requireNotionEnv();
 
   const cardFilters = [];
@@ -308,6 +308,9 @@ async function getPriceHistoryFiltered({ set, driver, cardType, parallel }) {
   if (parallel) {
     priceFilters.push({ property: "Parallel", select: { equals: parallel } });
   }
+  if (platform) {
+    priceFilters.push({ property: "Platform", select: { equals: platform } });
+  }
 
   const results = [];
   let cursor;
@@ -351,6 +354,7 @@ async function getTrendFilterOptions() {
   const drivers = new Set();
   const cardTypes = new Set();
   const parallels = new Set();
+  const platforms = new Set();
 
   let cursor;
   do {
@@ -383,10 +387,12 @@ async function getTrendFilterOptions() {
       const parallel = props["Parallel"]?.select?.name;
       const setName = props["Set"]?.select?.name;
       const cardType = props["Card Type"]?.select?.name;
+      const platform = props["Platform"]?.select?.name;
       const driverArr = props["Driver"]?.multi_select || [];
       if (parallel) parallels.add(parallel);
       if (setName) sets.add(setName);
       if (cardType) cardTypes.add(cardType);
+      if (platform) platforms.add(platform);
       driverArr.forEach((d) => drivers.add(d.name));
     }
     cursor = res.has_more ? res.next_cursor : undefined;
@@ -397,6 +403,7 @@ async function getTrendFilterOptions() {
     drivers: Array.from(drivers).sort(),
     cardTypes: Array.from(cardTypes).sort(),
     parallels: Array.from(parallels).sort(),
+    platforms: Array.from(platforms).sort(),
   };
 }
 

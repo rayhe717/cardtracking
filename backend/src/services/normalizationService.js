@@ -20,6 +20,16 @@ const parallels = loadDictionary("parallels.csv");
 const sets = loadDictionary("sets.csv");
 const cardTerms = loadDictionary("card_terms.csv");
 
+function removeCJKSpaces(text) {
+  let result = text;
+  let previous;
+  do {
+    previous = result;
+    result = result.replace(/([\u4e00-\u9fff])\s+([\u4e00-\u9fff])/g, "$1$2");
+  } while (result !== previous);
+  return result;
+}
+
 function applyDictionary(text, rows) {
   let output = text;
   for (const row of rows) {
@@ -28,13 +38,16 @@ function applyDictionary(text, rows) {
     if (!zh || !en) {
       continue;
     }
-    output = output.replaceAll(zh, en);
+    const pattern = zh.split("").join("\\s*");
+    const regex = new RegExp(pattern, "g");
+    output = output.replace(regex, en);
   }
   return output;
 }
 
 function normalizeOCRText(inputText) {
   let text = inputText || "";
+  text = removeCJKSpaces(text);
   text = applyDictionary(text, cardTerms);
   text = applyDictionary(text, sets);
   text = applyDictionary(text, drivers);
@@ -57,8 +70,29 @@ function getSelectOptions() {
   };
 }
 
+function getDictionariesForPrompt() {
+  const options = getSelectOptions();
+
+  const chineseToEnglish = [];
+  for (const row of [...cardTerms, ...sets, ...drivers, ...parallels]) {
+    if (row.Chinese && row.English && row.Chinese !== row.English) {
+      chineseToEnglish.push(`"${row.Chinese}" → "${row.English}"`);
+    }
+  }
+
+  return {
+    validSets: options.sets,
+    validDrivers: options.drivers,
+    validParallels: options.parallels,
+    validCardTypes: options.cardTypes,
+    validCurrencies: options.currencies,
+    chineseTranslations: chineseToEnglish,
+  };
+}
+
 module.exports = {
   normalizeOCRText,
   getCardTypes,
   getSelectOptions,
+  getDictionariesForPrompt,
 };

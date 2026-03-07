@@ -1,5 +1,6 @@
 const OpenAI = require("openai");
-const { normalizeOCRText, getCardTypes } = require("./normalizationService");
+const Fuse = require("fuse.js");
+const { normalizeOCRText, getCardTypes, getDictionariesForPrompt, getSelectOptions } = require("./normalizationService");
 
 function resolveProvider() {
   if (process.env.LLM_PROVIDER) {
@@ -204,25 +205,72 @@ function parseJsonFromModelOutput(text) {
   }
 }
 
+function buildExtractionPrompt(text) {
+  const dict = getDictionariesForPrompt();
+
+  const systemPrompt = `You are an expert at extracting F1 trading card listing details from OCR text.
+Your job is to extract structured data and return ONLY a valid JSON object.
+
+IMPORTANT RULES:
+1. Use EXACT values from the valid options lists below - do not invent new values or add extra spaces
+2. If a field cannot be determined, use empty string "" for text fields or null for price
+3. Translate Chinese terms to English using the translations provided
+4. Return strict JSON only, no markdown or explanations`;
+
+  const userPrompt = `## VALID OPTIONS (use these exact values):
+
+**Sets (set_name):**
+${dict.validSets.join(", ")}
+
+**Drivers (driver):**
+${dict.validDrivers.join(", ")}
+
+**Card Types (card_type):**
+${dict.validCardTypes.join(", ")}
+
+**Parallels (parallel):**
+${dict.validParallels.join(", ")}
+
+**Currencies (currency):**
+${dict.validCurrencies.join(", ")}
+
+**Platforms (platform):**
+eBay, Xianyu, Katao, Carousell, Others
+
+## CHINESE TO ENGLISH TRANSLATIONS:
+${dict.chineseTranslations.slice(0, 50).join("\n")}
+
+## FIELDS TO EXTRACT:
+- set_name: Card set name (must match valid sets above)
+- card_type: Insert/subset type like Autographs, Rookie, Grand Prix Winners, Pole Position, etc.
+- driver: F1 driver name (must match valid drivers above)
+- card_number: Card number if visible
+- parallel: Card parallel/variant (must match valid parallels above)
+- serial_number: Full serial numbering including both numbers, e.g. "25/99", "1/1", "50/199". Include the complete "XX/YY" format, not just "/YY"
+- price: Numeric price value (no currency symbol). Prices may appear with comma separators like "1,500" or "2,000" - convert to plain number (1500, 2000)
+- currency: Currency code (USD, CNY, HKD, EUR, GBP, SGD)
+- platform: Selling platform
+- grading_company: PSA, BGS, SGC, etc. if graded
+- grade: Numeric grade if graded
+- listing_date: Date in YYYY-MM-DD format if found
+
+## OCR TEXT TO ANALYZE:
+${text}
+
+## RESPOND WITH JSON ONLY:`;
+
+  return { systemPrompt, userPrompt };
+}
+
 async function llmExtract(text) {
+  const { systemPrompt, userPrompt } = buildExtractionPrompt(text);
+
   const completion = await llm.client.chat.completions.create({
     model: llm.model,
     temperature: 0.1,
     messages: [
-      {
-        role: "system",
-        content:
-          "Extract F1 trading card listing details. Normalize Chinese to English and return only JSON object.",
-      },
-      {
-        role: "user",
-        content:
-          "Extract fields: set_name, card_type, driver, card_number, parallel, serial_number, price, currency, platform, grading_company, grade, listing_date.\n" +
-          "Use card_type for inserts, subsets, autograph/rookie style categories such as Autographs, Rookie, Grand Prix Winners, Pole Position, Duo Cards, On The Move, Ace of Trades, Speed Demons, Helmet Collection.\n" +
-          "listing_date should be in YYYY-MM-DD format if found (e.g. 2024-03-15). Look for dates indicating when the listing was posted or sold.\n" +
-          "Return strict JSON only with those keys.\n\n" +
-          `OCR text:\n${text}`,
-      },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
     ],
   });
 
@@ -231,16 +279,74 @@ async function llmExtract(text) {
   return { ...defaultShape, ...parsed };
 }
 
+function fuzzyMatchToValidOption(value, validOptions, threshold = 0.4) {
+  if (!value || validOptions.length === 0) {
+    return value;
+  }
+  const valueLower = String(value).toLowerCase().trim();
+  for (const opt of validOptions) {
+    if (opt.toLowerCase() === valueLower) {
+      return opt;
+    }
+  }
+  const fuse = new Fuse(validOptions, {
+    threshold,
+    includeScore: true,
+  });
+  const results = fuse.search(value);
+  if (results.length > 0 && results[0].score <= threshold) {
+    return results[0].item;
+  }
+  return value;
+}
+
+function normalizeExtractedValues(extracted) {
+  const options = getSelectOptions();
+
+  const normalized = { ...extracted };
+
+  if (normalized.set_name) {
+    normalized.set_name = fuzzyMatchToValidOption(normalized.set_name, options.sets);
+  }
+
+  if (normalized.driver) {
+    if (Array.isArray(normalized.driver)) {
+      normalized.driver = normalized.driver.map((d) =>
+        fuzzyMatchToValidOption(d, options.drivers)
+      );
+    } else {
+      normalized.driver = fuzzyMatchToValidOption(normalized.driver, options.drivers);
+    }
+  }
+
+  if (normalized.card_type) {
+    normalized.card_type = fuzzyMatchToValidOption(normalized.card_type, options.cardTypes);
+  }
+
+  if (normalized.parallel) {
+    normalized.parallel = fuzzyMatchToValidOption(normalized.parallel, options.parallels);
+  }
+
+  if (normalized.currency) {
+    normalized.currency = fuzzyMatchToValidOption(normalized.currency, options.currencies, 0.3);
+  }
+
+  return normalized;
+}
+
 async function extractCardData(rawOCRText) {
   const normalizedText = normalizeOCRText(rawOCRText);
+  let extracted;
   if (!llm.client) {
-    return heuristicExtract(normalizedText);
+    extracted = heuristicExtract(normalizedText);
+  } else {
+    try {
+      extracted = await llmExtract(normalizedText);
+    } catch (_error) {
+      extracted = heuristicExtract(normalizedText);
+    }
   }
-  try {
-    return await llmExtract(normalizedText);
-  } catch (_error) {
-    return heuristicExtract(normalizedText);
-  }
+  return normalizeExtractedValues(extracted);
 }
 
 module.exports = {

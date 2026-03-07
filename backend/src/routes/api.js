@@ -210,8 +210,8 @@ router.get("/price-history/:cardId", async (req, res) => {
 
 router.get("/price-history-filtered", async (req, res) => {
   try {
-    const { set, driver, cardType, parallel } = req.query;
-    const history = await getPriceHistoryFiltered({ set, driver, cardType, parallel });
+    const { set, driver, cardType, parallel, platform } = req.query;
+    const history = await getPriceHistoryFiltered({ set, driver, cardType, parallel, platform });
     res.json({ ok: true, history });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
