@@ -43,6 +43,63 @@ const GROUP_BY_OPTIONS = [
   { id: "platform", label: "Platform" },
 ];
 
+function MultiSelectFilter({ label, options, selected, onToggle, disabled }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <label className="block text-xs text-dark/70">{label}</label>
+      <button
+        type="button"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        className="mt-1 w-full rounded border border-dark/30 bg-cream p-2 text-left text-sm disabled:opacity-50"
+      >
+        {selected.length === 0 ? (
+          <span className="text-dark/50">-- Any --</span>
+        ) : (
+          <span className="text-dark">{selected.length} selected</span>
+        )}
+      </button>
+      {selected.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {selected.map((v) => (
+            <span
+              key={v}
+              className="inline-flex items-center gap-1 rounded bg-accent px-1.5 py-0.5 text-[10px] text-white"
+            >
+              {v.length > 15 ? v.slice(0, 15) + "..." : v}
+              <button type="button" onClick={() => onToggle(v)} className="hover:text-cream">
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+          <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded border border-dark/30 bg-cream shadow-lg">
+            {options.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => onToggle(opt)}
+                className={`w-full px-2 py-1.5 text-left text-xs hover:bg-creamAlt ${
+                  selected.includes(opt) ? "bg-accent/20 font-medium" : ""
+                }`}
+              >
+                {selected.includes(opt) && <span className="mr-1">✓</span>}
+                {opt}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Trends() {
   const [priceHistory, setPriceHistory] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -57,13 +114,13 @@ export default function Trends() {
     parallels: [],
     platforms: [],
   });
-  const [selectedSet, setSelectedSet] = useState("");
-  const [selectedDriver, setSelectedDriver] = useState("");
-  const [selectedCardType, setSelectedCardType] = useState("");
-  const [selectedParallel, setSelectedParallel] = useState("");
-  const [selectedPlatform, setSelectedPlatform] = useState("");
+  const [selectedSets, setSelectedSets] = useState([]);
+  const [selectedDrivers, setSelectedDrivers] = useState([]);
+  const [selectedCardTypes, setSelectedCardTypes] = useState([]);
+  const [selectedParallels, setSelectedParallels] = useState([]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState([]);
 
-  const hasAnyFilter = selectedSet || selectedDriver || selectedCardType || selectedParallel || selectedPlatform;
+  const hasAnyFilter = selectedSets.length > 0 || selectedDrivers.length > 0 || selectedCardTypes.length > 0 || selectedParallels.length > 0 || selectedPlatforms.length > 0;
 
   useEffect(() => {
     setLoading(true);
@@ -88,11 +145,11 @@ export default function Trends() {
     setLoading(true);
     setError("");
     const params = new URLSearchParams();
-    if (selectedSet) params.set("set", selectedSet);
-    if (selectedDriver) params.set("driver", selectedDriver);
-    if (selectedCardType) params.set("cardType", selectedCardType);
-    if (selectedParallel) params.set("parallel", selectedParallel);
-    if (selectedPlatform) params.set("platform", selectedPlatform);
+    if (selectedSets.length) params.set("sets", selectedSets.join(","));
+    if (selectedDrivers.length) params.set("drivers", selectedDrivers.join(","));
+    if (selectedCardTypes.length) params.set("cardTypes", selectedCardTypes.join(","));
+    if (selectedParallels.length) params.set("parallels", selectedParallels.join(","));
+    if (selectedPlatforms.length) params.set("platforms", selectedPlatforms.join(","));
 
     fetch(`${API_BASE}/price-history-filtered?${params.toString()}`)
       .then((res) => res.json())
@@ -105,7 +162,7 @@ export default function Trends() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [selectedSet, selectedDriver, selectedCardType, selectedParallel, selectedPlatform, hasAnyFilter]);
+  }, [selectedSets, selectedDrivers, selectedCardTypes, selectedParallels, selectedPlatforms, hasAnyFilter]);
 
   const chartData = useMemo(() => {
     if (!priceHistory.length) return null;
@@ -139,13 +196,24 @@ export default function Trends() {
     }
 
     const datasets = Object.entries(byGroup).map(([groupName, entries], idx) => {
-      const dateMap = {};
+      const datePrices = {};
       const dateRecordType = {};
       entries.forEach((e) => {
-        if (!dateMap[e.date] || e.priceCny > dateMap[e.date]) {
-          dateMap[e.date] = e.priceCny;
+        if (!datePrices[e.date]) {
+          datePrices[e.date] = [];
+        }
+        datePrices[e.date].push(e.priceCny);
+        if (e.recordType === "Buy") {
+          dateRecordType[e.date] = "Buy";
+        } else if (!dateRecordType[e.date]) {
           dateRecordType[e.date] = e.recordType;
         }
+      });
+      const dateMap = {};
+      Object.keys(datePrices).forEach((date) => {
+        const prices = datePrices[date].sort((a, b) => a - b);
+        const mid = Math.floor(prices.length / 2);
+        dateMap[date] = prices.length % 2 !== 0 ? prices[mid] : (prices[mid - 1] + prices[mid]) / 2;
       });
       const pointStyles = allDates.map((d) => (dateRecordType[d] === "Buy" ? "rectRot" : "circle"));
       const pointRadii = allDates.map((d) => (dateRecordType[d] === "Buy" ? 6 : 4));
@@ -228,28 +296,36 @@ export default function Trends() {
   }, [chartType, allDates]);
 
   function clearFilters() {
-    setSelectedSet("");
-    setSelectedDriver("");
-    setSelectedCardType("");
-    setSelectedParallel("");
-    setSelectedPlatform("");
+    setSelectedSets([]);
+    setSelectedDrivers([]);
+    setSelectedCardTypes([]);
+    setSelectedParallels([]);
+    setSelectedPlatforms([]);
     setPriceHistory([]);
   }
 
+  function toggleFilter(setter, current, value) {
+    if (current.includes(value)) {
+      setter(current.filter((v) => v !== value));
+    } else {
+      setter([...current, value]);
+    }
+  }
+
   const activeFilters = [
-    selectedSet && `Set: ${selectedSet}`,
-    selectedDriver && `Driver: ${selectedDriver}`,
-    selectedCardType && `Card Type: ${selectedCardType}`,
-    selectedParallel && `Parallel: ${selectedParallel}`,
-    selectedPlatform && `Platform: ${selectedPlatform}`,
+    selectedSets.length > 0 ? `Set: ${selectedSets.join(", ")}` : null,
+    selectedDrivers.length > 0 ? `Driver: ${selectedDrivers.join(", ")}` : null,
+    selectedCardTypes.length > 0 ? `Card Type: ${selectedCardTypes.join(", ")}` : null,
+    selectedParallels.length > 0 ? `Parallel: ${selectedParallels.join(", ")}` : null,
+    selectedPlatforms.length > 0 ? `Platform: ${selectedPlatforms.join(", ")}` : null,
   ].filter(Boolean);
 
   const disabledGroupBy = {
-    set: Boolean(selectedSet),
-    driver: Boolean(selectedDriver),
-    cardType: Boolean(selectedCardType),
-    parallel: Boolean(selectedParallel),
-    platform: Boolean(selectedPlatform),
+    set: selectedSets.length === 1,
+    driver: selectedDrivers.length === 1,
+    cardType: selectedCardTypes.length === 1,
+    parallel: selectedParallels.length === 1,
+    platform: selectedPlatforms.length === 1,
   };
 
   const availableGroupByOptions = GROUP_BY_OPTIONS.filter((g) => !disabledGroupBy[g.id]);
@@ -258,7 +334,7 @@ export default function Trends() {
     if (disabledGroupBy[groupBy] && availableGroupByOptions.length > 0) {
       setGroupBy(availableGroupByOptions[0].id);
     }
-  }, [selectedSet, selectedDriver, selectedCardType, selectedParallel, selectedPlatform]);
+  }, [selectedSets, selectedDrivers, selectedCardTypes, selectedParallels, selectedPlatforms]);
 
   return (
     <div className="min-h-screen bg-cream p-6 text-dark">
@@ -268,88 +344,43 @@ export default function Trends() {
 
         <div className="rounded border border-dark/30 bg-creamAlt p-4">
           <div className="mb-4">
-            <label className="mb-2 block text-sm font-medium">Filters</label>
+            <label className="mb-2 block text-sm font-medium">Filters (click to select multiple)</label>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-              <div>
-                <label className="block text-xs text-dark/70">Set</label>
-                <select
-                  value={selectedSet}
-                  onChange={(e) => setSelectedSet(e.target.value)}
-                  disabled={loading}
-                  className="mt-1 w-full rounded border border-dark/30 bg-cream p-2 text-sm"
-                >
-                  <option value="">-- Any --</option>
-                  {filterOptions.sets.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-dark/70">Driver</label>
-                <select
-                  value={selectedDriver}
-                  onChange={(e) => setSelectedDriver(e.target.value)}
-                  disabled={loading}
-                  className="mt-1 w-full rounded border border-dark/30 bg-cream p-2 text-sm"
-                >
-                  <option value="">-- Any --</option>
-                  {filterOptions.drivers.map((d) => (
-                    <option key={d} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-dark/70">Card Type</label>
-                <select
-                  value={selectedCardType}
-                  onChange={(e) => setSelectedCardType(e.target.value)}
-                  disabled={loading}
-                  className="mt-1 w-full rounded border border-dark/30 bg-cream p-2 text-sm"
-                >
-                  <option value="">-- Any --</option>
-                  {filterOptions.cardTypes.map((ct) => (
-                    <option key={ct} value={ct}>
-                      {ct}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-dark/70">Parallel</label>
-                <select
-                  value={selectedParallel}
-                  onChange={(e) => setSelectedParallel(e.target.value)}
-                  disabled={loading}
-                  className="mt-1 w-full rounded border border-dark/30 bg-cream p-2 text-sm"
-                >
-                  <option value="">-- Any --</option>
-                  {filterOptions.parallels.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-dark/70">Platform</label>
-                <select
-                  value={selectedPlatform}
-                  onChange={(e) => setSelectedPlatform(e.target.value)}
-                  disabled={loading}
-                  className="mt-1 w-full rounded border border-dark/30 bg-cream p-2 text-sm"
-                >
-                  <option value="">-- Any --</option>
-                  {filterOptions.platforms.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <MultiSelectFilter
+                label="Set"
+                options={filterOptions.sets}
+                selected={selectedSets}
+                onToggle={(v) => toggleFilter(setSelectedSets, selectedSets, v)}
+                disabled={loading}
+              />
+              <MultiSelectFilter
+                label="Driver"
+                options={filterOptions.drivers}
+                selected={selectedDrivers}
+                onToggle={(v) => toggleFilter(setSelectedDrivers, selectedDrivers, v)}
+                disabled={loading}
+              />
+              <MultiSelectFilter
+                label="Card Type"
+                options={filterOptions.cardTypes}
+                selected={selectedCardTypes}
+                onToggle={(v) => toggleFilter(setSelectedCardTypes, selectedCardTypes, v)}
+                disabled={loading}
+              />
+              <MultiSelectFilter
+                label="Parallel"
+                options={filterOptions.parallels}
+                selected={selectedParallels}
+                onToggle={(v) => toggleFilter(setSelectedParallels, selectedParallels, v)}
+                disabled={loading}
+              />
+              <MultiSelectFilter
+                label="Platform"
+                options={filterOptions.platforms}
+                selected={selectedPlatforms}
+                onToggle={(v) => toggleFilter(setSelectedPlatforms, selectedPlatforms, v)}
+                disabled={loading}
+              />
             </div>
           </div>
 
@@ -496,7 +527,120 @@ export default function Trends() {
         {hasAnyFilter && priceHistory.length === 0 && !loading && (
           <p className="text-sm text-dark/70">No price history found for the selected filters.</p>
         )}
+
+        {priceHistory.length > 0 && (
+          <AskAIPanel
+            priceHistory={priceHistory}
+            filters={{
+              sets: selectedSets,
+              drivers: selectedDrivers,
+              cardTypes: selectedCardTypes,
+              parallels: selectedParallels,
+              platforms: selectedPlatforms,
+            }}
+          />
+        )}
       </div>
+    </div>
+  );
+}
+
+function AskAIPanel({ priceHistory, filters }) {
+  const [question, setQuestion] = useState("");
+  const [response, setResponse] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const presetQuestions = [
+    "What's the overall price trend?",
+    "Is now a good time to buy?",
+    "Which parallel holds value best?",
+    "Summarize the market for these cards",
+  ];
+
+  async function askQuestion(q) {
+    const questionToAsk = q || question;
+    if (!questionToAsk.trim()) return;
+
+    setLoading(true);
+    setError("");
+    setResponse("");
+
+    try {
+      const res = await fetch(`${API_BASE}/analyze-trends`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: questionToAsk,
+          priceHistory,
+          filters,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setResponse(data.response);
+      } else {
+        setError(data.error || "Failed to get response");
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="rounded border border-dark/30 bg-creamAlt p-4">
+      <h3 className="mb-3 font-semibold">Ask AI About This Data</h3>
+      <p className="mb-3 text-xs text-dark/70">
+        AI will analyze the {priceHistory.length} price entries currently displayed
+      </p>
+
+      <div className="mb-3 flex flex-wrap gap-2">
+        {presetQuestions.map((q) => (
+          <button
+            key={q}
+            type="button"
+            onClick={() => {
+              setQuestion(q);
+              askQuestion(q);
+            }}
+            disabled={loading}
+            className="rounded border border-dark/30 bg-cream px-2 py-1 text-xs hover:bg-creamAlt disabled:opacity-50"
+          >
+            {q}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !loading && askQuestion()}
+          placeholder="Ask a question about the price data..."
+          disabled={loading}
+          className="flex-1 rounded border border-dark/30 bg-cream p-2 text-sm disabled:opacity-50"
+        />
+        <button
+          type="button"
+          onClick={() => askQuestion()}
+          disabled={loading || !question.trim()}
+          className="rounded border border-dark/30 bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+        >
+          {loading ? "Thinking..." : "Ask"}
+        </button>
+      </div>
+
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+
+      {response && (
+        <div className="mt-4 rounded border border-dark/20 bg-cream p-3">
+          <p className="mb-2 text-xs font-medium text-dark/70">AI Response:</p>
+          <div className="whitespace-pre-wrap text-sm">{response}</div>
+        </div>
+      )}
     </div>
   );
 }

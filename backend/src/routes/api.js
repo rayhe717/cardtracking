@@ -210,8 +210,13 @@ router.get("/price-history/:cardId", async (req, res) => {
 
 router.get("/price-history-filtered", async (req, res) => {
   try {
-    const { set, driver, cardType, parallel, platform } = req.query;
-    const history = await getPriceHistoryFiltered({ set, driver, cardType, parallel, platform });
+    const parseList = (val) => (val ? val.split(",").map((v) => v.trim()).filter(Boolean) : []);
+    const sets = parseList(req.query.sets || req.query.set);
+    const drivers = parseList(req.query.drivers || req.query.driver);
+    const cardTypes = parseList(req.query.cardTypes || req.query.cardType);
+    const parallels = parseList(req.query.parallels || req.query.parallel);
+    const platforms = parseList(req.query.platforms || req.query.platform);
+    const history = await getPriceHistoryFiltered({ sets, drivers, cardTypes, parallels, platforms });
     res.json({ ok: true, history });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
@@ -222,6 +227,21 @@ router.get("/trend-options", async (_req, res) => {
   try {
     const options = await getTrendFilterOptions();
     res.json({ ok: true, options });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+const { analyzeTrends } = require("../services/analysisService");
+
+router.post("/analyze-trends", async (req, res) => {
+  try {
+    const { question, priceHistory, filters } = req.body;
+    if (!question || !priceHistory) {
+      return res.status(400).json({ ok: false, error: "Question and price history are required" });
+    }
+    const response = await analyzeTrends(question, priceHistory, filters);
+    res.json({ ok: true, response });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
   }

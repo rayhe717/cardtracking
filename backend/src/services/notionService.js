@@ -263,18 +263,30 @@ async function getPriceHistory(cardId) {
   return results;
 }
 
-async function getPriceHistoryFiltered({ set, driver, cardType, parallel, platform }) {
+async function getPriceHistoryFiltered({ sets, drivers, cardTypes, parallels, platforms }) {
   requireNotionEnv();
 
   const cardFilters = [];
-  if (set) {
-    cardFilters.push({ property: "Set", select: { equals: set } });
+  if (sets && sets.length > 0) {
+    if (sets.length === 1) {
+      cardFilters.push({ property: "Set", select: { equals: sets[0] } });
+    } else {
+      cardFilters.push({ or: sets.map((s) => ({ property: "Set", select: { equals: s } })) });
+    }
   }
-  if (cardType) {
-    cardFilters.push({ property: "Card Type", select: { equals: cardType } });
+  if (cardTypes && cardTypes.length > 0) {
+    if (cardTypes.length === 1) {
+      cardFilters.push({ property: "Card Type", select: { equals: cardTypes[0] } });
+    } else {
+      cardFilters.push({ or: cardTypes.map((ct) => ({ property: "Card Type", select: { equals: ct } })) });
+    }
   }
-  if (driver) {
-    cardFilters.push({ property: "Driver", multi_select: { contains: driver } });
+  if (drivers && drivers.length > 0) {
+    if (drivers.length === 1) {
+      cardFilters.push({ property: "Driver", multi_select: { contains: drivers[0] } });
+    } else {
+      cardFilters.push({ or: drivers.map((d) => ({ property: "Driver", multi_select: { contains: d } })) });
+    }
   }
 
   let cardIds = null;
@@ -305,11 +317,19 @@ async function getPriceHistoryFiltered({ set, driver, cardType, parallel, platfo
       or: cardIds.map((id) => ({ property: "Card", relation: { contains: id } })),
     });
   }
-  if (parallel) {
-    priceFilters.push({ property: "Parallel", select: { equals: parallel } });
+  if (parallels && parallels.length > 0) {
+    if (parallels.length === 1) {
+      priceFilters.push({ property: "Parallel", select: { equals: parallels[0] } });
+    } else {
+      priceFilters.push({ or: parallels.map((p) => ({ property: "Parallel", select: { equals: p } })) });
+    }
   }
-  if (platform) {
-    priceFilters.push({ property: "Platform", select: { equals: platform } });
+  if (platforms && platforms.length > 0) {
+    if (platforms.length === 1) {
+      priceFilters.push({ property: "Platform", select: { equals: platforms[0] } });
+    } else {
+      priceFilters.push({ or: platforms.map((p) => ({ property: "Platform", select: { equals: p } })) });
+    }
   }
 
   const results = [];
