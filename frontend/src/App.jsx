@@ -29,6 +29,44 @@ function todayDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
+const FALLBACK_CNY_RATES = {
+  CNY: 1,
+  USD: 7.2,
+  EUR: 7.8,
+  GBP: 9.1,
+  HKD: 0.92,
+  SGD: 5.3,
+};
+
+async function fetchExchangeRates() {
+  try {
+    const res = await fetch("https://api.frankfurter.app/latest?to=CNY&from=USD,EUR,GBP,HKD,SGD");
+    const data = await res.json();
+    if (data.rates?.CNY) {
+      const usdToCny = data.rates.CNY;
+      const rates = { CNY: 1 };
+      const baseRes = await fetch("https://api.frankfurter.app/latest?from=USD");
+      const baseData = await baseRes.json();
+      if (baseData.rates) {
+        rates.USD = usdToCny;
+        rates.EUR = usdToCny / (baseData.rates.EUR || 0.92);
+        rates.GBP = usdToCny / (baseData.rates.GBP || 0.79);
+        rates.HKD = usdToCny / (baseData.rates.HKD || 7.8);
+        rates.SGD = usdToCny / (baseData.rates.SGD || 1.35);
+      }
+      return rates;
+    }
+  } catch (e) {
+    console.warn("Failed to fetch exchange rates, using fallback:", e);
+  }
+  return FALLBACK_CNY_RATES;
+}
+
+function convertToCNY(amount, currency, rates) {
+  const rate = rates[currency] || FALLBACK_CNY_RATES[currency] || 1;
+  return Math.round(amount * rate * 100) / 100;
+}
+
 function createBlankForm() {
   return {
     record_type: "Market",
@@ -97,6 +135,8 @@ export default function App() {
   const [folderImages, setFolderImages] = useState([]);
   const [folderName, setFolderName] = useState("");
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
+  const [exchangeRates, setExchangeRates] = useState(FALLBACK_CNY_RATES);
+  const [ratesLoaded, setRatesLoaded] = useState(false);
   const cropperRef = useRef(null);
 
   const canProcess = useMemo(() => Boolean(croppedImage?.fileName), [croppedImage]);
@@ -104,6 +144,13 @@ export default function App() {
   const isBuy = String(form.record_type || "Market") === "Buy";
   const cropTarget = cropMode === "portrait" ? { width: 400, height: 600 } : { width: 600, height: 400 };
   const cropAspect = cropTarget.width / cropTarget.height;
+
+  const calculatedPriceCny = useMemo(() => {
+    const price = form.price ? Number(form.price) : 0;
+    const fees = form.fees ? Number(form.fees) : 0;
+    const priceForConversion = isBuy ? price + fees : price;
+    return convertToCNY(priceForConversion, form.currency || "USD", exchangeRates);
+  }, [form.price, form.fees, form.currency, isBuy, exchangeRates]);
 
   useEffect(() => {
     api("/options")
@@ -113,6 +160,11 @@ export default function App() {
         }
       })
       .catch(() => {});
+
+    fetchExchangeRates().then((rates) => {
+      setExchangeRates(rates);
+      setRatesLoaded(true);
+    });
   }, []);
 
   async function onSelectFolder() {
@@ -327,14 +379,22 @@ export default function App() {
         attachments.push({ name: "cropped", url: croppedImage.imageUrl });
       }
 
+      const price = form.price ? Number(form.price) : 0;
+      const fees = form.fees ? Number(form.fees) : 0;
+      const currency = form.currency || "USD";
+      const isBuyRecord = form.record_type === "Buy";
+      const priceForConversion = isBuyRecord ? price + fees : price;
+      const priceCny = convertToCNY(priceForConversion, currency, exchangeRates);
+
       await api("/save", "POST", {
         entry: {
           ...form,
           driver: Array.isArray(form.driver) ? form.driver : [form.driver].filter(Boolean),
           platform: normalizePlatform(form.platform),
-          price: form.price ? Number(form.price) : 0,
+          price,
           quantity: form.quantity ? Number(form.quantity) : 1,
-          fees: form.fees ? Number(form.fees) : 0,
+          fees,
+          price_cny: priceCny,
           attachments,
           date: form.listing_date || todayDate(),
         },
@@ -735,6 +795,16 @@ export default function App() {
                   )}
                 </label>
               ))}
+            </div>
+            <div className="mt-3 rounded border border-accent/50 bg-accent/10 p-2">
+              <p className="text-sm font-medium">
+                Price (CNY): <span className="text-accent">{calculatedPriceCny.toFixed(2)}</span>
+                {isBuy && <span className="ml-2 text-xs text-dark/70">(includes fees)</span>}
+              </p>
+              <p className="mt-1 text-xs text-dark/60">
+                Rate: 1 {form.currency || "USD"} = {(exchangeRates[form.currency || "USD"] || 1).toFixed(4)} CNY
+                {ratesLoaded ? " (live)" : " (fallback)"}
+              </p>
             </div>
             {match?.suggested && (
               <p className="mt-3 text-xs text-dark/90">
