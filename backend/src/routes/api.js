@@ -7,7 +7,7 @@ const { cropImage, buildLocalImageUrl, resolveAttachmentUrl, getConfiguredBaseUr
 const { runOCR } = require("../services/ocrService");
 const { extractCardData } = require("../services/extractionService");
 const { loadChecklist, matchCard } = require("../services/matchService");
-const { savePriceEntry } = require("../services/notionService");
+const { savePriceEntry, listCards, getPriceHistory, getPriceHistoryFiltered, getTrendFilterOptions } = require("../services/notionService");
 const { getSelectOptions } = require("../services/normalizationService");
 
 const uploadDir = path.resolve(__dirname, "../../../uploads");
@@ -187,6 +187,43 @@ router.post("/save", async (req, res) => {
     res.json({ ok: true, result });
   } catch (error) {
     res.status(500).json({ ok: false, error: `Notion save failed: ${error.message}` });
+  }
+});
+
+router.get("/cards", async (_req, res) => {
+  try {
+    const cards = await listCards();
+    res.json({ ok: true, cards });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+router.get("/price-history/:cardId", async (req, res) => {
+  try {
+    const history = await getPriceHistory(req.params.cardId);
+    res.json({ ok: true, history });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+router.get("/price-history-filtered", async (req, res) => {
+  try {
+    const { set, driver, cardType, parallel } = req.query;
+    const history = await getPriceHistoryFiltered({ set, driver, cardType, parallel });
+    res.json({ ok: true, history });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+router.get("/trend-options", async (_req, res) => {
+  try {
+    const options = await getTrendFilterOptions();
+    res.json({ ok: true, options });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
   }
 });
 

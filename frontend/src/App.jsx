@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Cropper } from "react-cropper";
 import "cropperjs/dist/cropper.css";
+import Trends from "./Trends";
 
 const API_BASE = "/api";
 const API_TIMEOUT_MS = 45000;
@@ -116,6 +117,57 @@ async function api(path, method = "GET", body) {
 }
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState("extract");
+
+  if (activeTab === "trends") {
+    return (
+      <div>
+        <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
+        <Trends />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <TabNav activeTab={activeTab} setActiveTab={setActiveTab} />
+      <ExtractView />
+    </div>
+  );
+}
+
+function TabNav({ activeTab, setActiveTab }) {
+  return (
+    <div className="border-b border-dark/30 bg-creamAlt">
+      <div className="mx-auto flex max-w-7xl">
+        <button
+          type="button"
+          onClick={() => setActiveTab("extract")}
+          className={`px-6 py-3 text-sm font-medium transition-colors ${
+            activeTab === "extract"
+              ? "border-b-2 border-accent bg-cream text-accent"
+              : "text-dark/70 hover:bg-cream hover:text-dark"
+          }`}
+        >
+          Extract
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("trends")}
+          className={`px-6 py-3 text-sm font-medium transition-colors ${
+            activeTab === "trends"
+              ? "border-b-2 border-accent bg-cream text-accent"
+              : "text-dark/70 hover:bg-cream hover:text-dark"
+          }`}
+        >
+          Trends
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ExtractView() {
   const [originalImage, setOriginalImage] = useState(null);
   const [croppedImage, setCroppedImage] = useState(null);
   const [ocrText, setOcrText] = useState("");

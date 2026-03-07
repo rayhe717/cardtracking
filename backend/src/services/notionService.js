@@ -144,6 +144,8 @@ async function createPriceHistory(entry, cardPageId) {
       Currency: selectValue(entry.currency || "USD"),
       "Price CNY": { number: numberValue(entry.price_cny) },
       Platform: selectValue(normalizePlatform(entry.platform)),
+      Set: selectValue(entry.set_name),
+      "Card Type": selectValue(entry.card_type),
       Driver: multiSelectValue(entry.driver),
       Parallel: selectValue(entry.parallel),
       "Serial Number": { rich_text: [{ text: { content: entry.serial_number || "" } }] },
@@ -198,6 +200,276 @@ async function savePriceEntry(entry) {
   };
 }
 
+async function listCards() {
+  requireNotionEnv();
+  const results = [];
+  let cursor;
+  do {
+    const res = await notion.databases.query({
+      database_id: process.env.NOTION_CARD_REGISTRY_DB_ID,
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    for (const page of res.results) {
+      const props = page.properties;
+      const title = props["Card ID"]?.title?.[0]?.plain_text || "";
+      const set = props["Set"]?.select?.name || "";
+      const driver = (props["Driver"]?.multi_select || []).map((d) => d.name).join(" / ");
+      const cardType = props["Card Type"]?.select?.name || "";
+      results.push({
+        id: page.id,
+        title,
+        set,
+        driver,
+        cardType,
+      });
+    }
+    cursor = res.has_more ? res.next_cursor : undefined;
+  } while (cursor);
+  return results;
+}
+
+async function getPriceHistory(cardId) {
+  requireNotionEnv();
+  const results = [];
+  let cursor;
+  do {
+    const res = await notion.databases.query({
+      database_id: process.env.NOTION_PRICE_HISTORY_DB_ID,
+      filter: {
+        property: "Card",
+        relation: { contains: cardId },
+      },
+      sorts: [{ property: "Date", direction: "ascending" }],
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    for (const page of res.results) {
+      const props = page.properties;
+      results.push({
+        id: page.id,
+        date: props["Date"]?.date?.start || "",
+        price: props["Price"]?.number || 0,
+        priceCny: props["Price CNY"]?.number || 0,
+        currency: props["Currency"]?.select?.name || "USD",
+        parallel: props["Parallel"]?.select?.name || "",
+        serialNumber: props["Serial Number"]?.rich_text?.[0]?.plain_text || "",
+        platform: props["Platform"]?.select?.name || "",
+        recordType: props["Record Type"]?.select?.name || "Market",
+      });
+    }
+    cursor = res.has_more ? res.next_cursor : undefined;
+  } while (cursor);
+  return results;
+}
+
+async function getPriceHistoryFiltered({ set, driver, cardType, parallel }) {
+  requireNotionEnv();
+
+  const cardFilters = [];
+  if (set) {
+    cardFilters.push({ property: "Set", select: { equals: set } });
+  }
+  if (cardType) {
+    cardFilters.push({ property: "Card Type", select: { equals: cardType } });
+  }
+  if (driver) {
+    cardFilters.push({ property: "Driver", multi_select: { contains: driver } });
+  }
+
+  let cardIds = null;
+  if (cardFilters.length > 0) {
+    cardIds = [];
+    let cursor;
+    do {
+      const res = await notion.databases.query({
+        database_id: process.env.NOTION_CARD_REGISTRY_DB_ID,
+        filter: cardFilters.length === 1 ? cardFilters[0] : { and: cardFilters },
+        start_cursor: cursor,
+        page_size: 100,
+      });
+      for (const page of res.results) {
+        cardIds.push(page.id);
+      }
+      cursor = res.has_more ? res.next_cursor : undefined;
+    } while (cursor);
+
+    if (cardIds.length === 0) {
+      return [];
+    }
+  }
+
+  const priceFilters = [];
+  if (cardIds && cardIds.length > 0) {
+    priceFilters.push({
+      or: cardIds.map((id) => ({ property: "Card", relation: { contains: id } })),
+    });
+  }
+  if (parallel) {
+    priceFilters.push({ property: "Parallel", select: { equals: parallel } });
+  }
+
+  const results = [];
+  let cursor;
+  do {
+    const queryParams = {
+      database_id: process.env.NOTION_PRICE_HISTORY_DB_ID,
+      sorts: [{ property: "Date", direction: "ascending" }],
+      start_cursor: cursor,
+      page_size: 100,
+    };
+    if (priceFilters.length > 0) {
+      queryParams.filter = priceFilters.length === 1 ? priceFilters[0] : { and: priceFilters };
+    }
+    const res = await notion.databases.query(queryParams);
+    for (const page of res.results) {
+      const props = page.properties;
+      const driverArr = props["Driver"]?.multi_select || [];
+      results.push({
+        id: page.id,
+        date: props["Date"]?.date?.start || "",
+        price: props["Price"]?.number || 0,
+        priceCny: props["Price CNY"]?.number || 0,
+        currency: props["Currency"]?.select?.name || "USD",
+        parallel: props["Parallel"]?.select?.name || "",
+        serialNumber: props["Serial Number"]?.rich_text?.[0]?.plain_text || "",
+        platform: props["Platform"]?.select?.name || "",
+        recordType: props["Record Type"]?.select?.name || "Market",
+        driver: driverArr.map((d) => d.name).join(" / "),
+        set: props["Set"]?.select?.name || "",
+        cardType: props["Card Type"]?.select?.name || "",
+      });
+    }
+    cursor = res.has_more ? res.next_cursor : undefined;
+  } while (cursor);
+  return results;
+}
+
+async function getTrendFilterOptions() {
+  requireNotionEnv();
+  const sets = new Set();
+  const drivers = new Set();
+  const cardTypes = new Set();
+  const parallels = new Set();
+
+  let cursor;
+  do {
+    const res = await notion.databases.query({
+      database_id: process.env.NOTION_CARD_REGISTRY_DB_ID,
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    for (const page of res.results) {
+      const props = page.properties;
+      const setName = props["Set"]?.select?.name;
+      const cardType = props["Card Type"]?.select?.name;
+      const driverArr = props["Driver"]?.multi_select || [];
+      if (setName) sets.add(setName);
+      if (cardType) cardTypes.add(cardType);
+      driverArr.forEach((d) => drivers.add(d.name));
+    }
+    cursor = res.has_more ? res.next_cursor : undefined;
+  } while (cursor);
+
+  cursor = undefined;
+  do {
+    const res = await notion.databases.query({
+      database_id: process.env.NOTION_PRICE_HISTORY_DB_ID,
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    for (const page of res.results) {
+      const props = page.properties;
+      const parallel = props["Parallel"]?.select?.name;
+      const setName = props["Set"]?.select?.name;
+      const cardType = props["Card Type"]?.select?.name;
+      const driverArr = props["Driver"]?.multi_select || [];
+      if (parallel) parallels.add(parallel);
+      if (setName) sets.add(setName);
+      if (cardType) cardTypes.add(cardType);
+      driverArr.forEach((d) => drivers.add(d.name));
+    }
+    cursor = res.has_more ? res.next_cursor : undefined;
+  } while (cursor);
+
+  return {
+    sets: Array.from(sets).sort(),
+    drivers: Array.from(drivers).sort(),
+    cardTypes: Array.from(cardTypes).sort(),
+    parallels: Array.from(parallels).sort(),
+  };
+}
+
+async function getAvailableSets() {
+  requireNotionEnv();
+  const sets = new Set();
+
+  let cursor;
+  do {
+    const res = await notion.databases.query({
+      database_id: process.env.NOTION_CARD_REGISTRY_DB_ID,
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    for (const page of res.results) {
+      const props = page.properties;
+      const setName = props["Set"]?.select?.name;
+      if (setName) sets.add(setName);
+    }
+    cursor = res.has_more ? res.next_cursor : undefined;
+  } while (cursor);
+
+  return Array.from(sets).sort();
+}
+
+async function getParallelsForSet(setName) {
+  requireNotionEnv();
+
+  const cardIds = [];
+  let cursor;
+  do {
+    const res = await notion.databases.query({
+      database_id: process.env.NOTION_CARD_REGISTRY_DB_ID,
+      filter: { property: "Set", select: { equals: setName } },
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    for (const page of res.results) {
+      cardIds.push(page.id);
+    }
+    cursor = res.has_more ? res.next_cursor : undefined;
+  } while (cursor);
+
+  if (cardIds.length === 0) {
+    return [];
+  }
+
+  const parallels = new Set();
+  cursor = undefined;
+  do {
+    const res = await notion.databases.query({
+      database_id: process.env.NOTION_PRICE_HISTORY_DB_ID,
+      filter: {
+        or: cardIds.map((id) => ({ property: "Card", relation: { contains: id } })),
+      },
+      start_cursor: cursor,
+      page_size: 100,
+    });
+    for (const page of res.results) {
+      const props = page.properties;
+      const parallel = props["Parallel"]?.select?.name;
+      if (parallel) parallels.add(parallel);
+    }
+    cursor = res.has_more ? res.next_cursor : undefined;
+  } while (cursor);
+
+  return Array.from(parallels).sort();
+}
+
 module.exports = {
   savePriceEntry,
+  listCards,
+  getPriceHistory,
+  getPriceHistoryFiltered,
+  getTrendFilterOptions,
 };
