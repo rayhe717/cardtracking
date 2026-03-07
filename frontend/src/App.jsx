@@ -456,7 +456,7 @@ function ExtractView({ exchangeRates }) {
       const priceForConversion = isBuyRecord ? price + fees : price;
       const priceCny = convertToCNY(priceForConversion, currency, exchangeRates);
 
-      await api("/save", "POST", {
+      const saveResult = await api("/save", "POST", {
         entry: {
           ...form,
           driver: Array.isArray(form.driver) ? form.driver : [form.driver].filter(Boolean),
@@ -469,7 +469,11 @@ function ExtractView({ exchangeRates }) {
           date: form.listing_date || todayDate(),
         },
       });
-      setMessage("Saved to Notion.");
+      if (saveResult.warning) {
+        setMessage(`Saved to Notion. Warning: ${saveResult.warning}`);
+      } else {
+        setMessage("Saved to Notion.");
+      }
     } catch (error) {
       setMessage(error.message);
     } finally {

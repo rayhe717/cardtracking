@@ -41,8 +41,6 @@ const router = express.Router();
 
 let checklistCache = null;
 const OCR_TIMEOUT_MS = Number(process.env.OCR_TIMEOUT_MS || 45000);
-const TUNNEL_CHECK_TIMEOUT_MS = 5000;
-
 function withTimeout(promise, timeoutMs, message) {
   return Promise.race([
     promise,
@@ -52,35 +50,21 @@ function withTimeout(promise, timeoutMs, message) {
   ]);
 }
 
-async function assertPublicBaseUrlReachable(baseUrl) {
+function validatePublicBaseUrl(baseUrl) {
   const normalizedBase = String(baseUrl || "").trim().replace(/\/$/, "");
   if (!normalizedBase) {
-    throw new Error("PUBLIC_BASE_URL is required to save screenshots to Notion.");
+    console.warn("Warning: PUBLIC_BASE_URL not set. Images may not appear in Notion.");
+    return false;
   }
   if (!/^https?:\/\//i.test(normalizedBase)) {
-    throw new Error("PUBLIC_BASE_URL must start with http:// or https://");
+    console.warn("Warning: PUBLIC_BASE_URL must start with http:// or https://");
+    return false;
   }
   if (/localhost|127\.0\.0\.1|0\.0\.0\.0/i.test(normalizedBase)) {
-    throw new Error("PUBLIC_BASE_URL must be an internet-accessible URL (not localhost).");
+    console.warn("Warning: PUBLIC_BASE_URL should be internet-accessible (not localhost) for Notion to fetch images.");
+    return false;
   }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TUNNEL_CHECK_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${normalizedBase}/health`, {
-      method: "GET",
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      throw new Error(`PUBLIC_BASE_URL health check failed with status ${res.status}.`);
-    }
-  } catch (_error) {
-    throw new Error(
-      "PUBLIC_BASE_URL is unreachable. Start/update your tunnel URL in .env so Notion can fetch images."
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
+  return true;
 }
 
 router.get("/checklist", (_req, res) => {
@@ -176,15 +160,22 @@ router.post("/save", async (req, res) => {
       return;
     }
     const hasAttachments = Array.isArray(entry.attachments) && entry.attachments.some((a) => Boolean(a?.url));
-    if (hasAttachments) {
-      await assertPublicBaseUrlReachable(getConfiguredBaseUrl());
+    const baseUrl = getConfiguredBaseUrl();
+    const urlValid = validatePublicBaseUrl(baseUrl);
+    
+    let attachments = entry.attachments || [];
+    if (hasAttachments && urlValid) {
+      attachments = attachments.map((a) => ({
+        ...a,
+        url: a.url ? resolveAttachmentUrl(a.url) : a.url,
+      }));
+    } else if (hasAttachments && !urlValid) {
+      attachments = [];
     }
-    const attachments = (entry.attachments || []).map((a) => ({
-      ...a,
-      url: a.url ? resolveAttachmentUrl(a.url) : a.url,
-    }));
+    
     const result = await savePriceEntry({ ...entry, attachments });
-    res.json({ ok: true, result });
+    const warning = hasAttachments && !urlValid ? "Entry saved but image skipped (PUBLIC_BASE_URL not configured properly)." : null;
+    res.json({ ok: true, result, warning });
   } catch (error) {
     res.status(500).json({ ok: false, error: `Notion save failed: ${error.message}` });
   }
